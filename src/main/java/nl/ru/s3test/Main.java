@@ -5,6 +5,7 @@ import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.endpoints.Endpoint;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.S3Configuration;
 import software.amazon.awssdk.services.s3.endpoints.S3EndpointParams;
 import software.amazon.awssdk.services.s3.endpoints.S3EndpointProvider;
 import software.amazon.awssdk.services.s3.model.*;
@@ -23,18 +24,10 @@ public class Main {
     System.out.println("Connecting to " + endpoint + " using " + bucket);
     S3Client s3 = S3Client.builder()
         .region(Region.AF_SOUTH_1)
-        .endpointProvider(new S3EndpointProvider() {
-          @Override
-          public CompletableFuture<Endpoint> resolveEndpoint(S3EndpointParams s3EndpointParams) {
-            return CompletableFuture.completedFuture(Endpoint.builder().url(URI.create(endpoint)).build());
-          }
-
-          @Override
-          public CompletableFuture<Endpoint> resolveEndpoint(
-              Consumer<S3EndpointParams.Builder> endpointParamsConsumer) {
-            return S3EndpointProvider.super.resolveEndpoint(endpointParamsConsumer);
-          }
-        })
+        .serviceConfiguration(S3Configuration.builder()
+            .pathStyleAccessEnabled(true)
+            .build())
+        .endpointOverride(URI.create(args[0]))
         .build();
     System.out.println("Buckets");
     s3.listBuckets().buckets().forEach(System.out::println);
