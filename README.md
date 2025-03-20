@@ -21,11 +21,11 @@ docker build -t s3-hash-test .
 Test some remote S3 service:
 
 ```
-docker run -e AWS_ACCESS_KEY_ID=mykeyid -e AWS_SECRET_ACCESS_KEY=mysecret s3-hash-test https://s3.example.com mybucket
+docker run -e AWS_ACCESS_KEY_ID=mykeyid -e AWS_SECRET_ACCESS_KEY=mysecret s3-hash-test https://s3.example.com mybucket /data
 ```
 
 Test a locally running S3 service, on port 9000:
 
 ```
-docker run -e AWS_ACCESS_KEY_ID=mykeyid -e AWS_SECRET_ACCESS_KEY=mysecret --add-host host.docker.internal:host-gateway s3-hash-test http://host.docker.internal:9000 mybucket
+docker run -e AWS_ACCESS_KEY_ID=mykeyid -e AWS_SECRET_ACCESS_KEY=mysecret --add-host host.docker.internal:host-gateway s3-hash-test http://host.docker.internal:9000 mybucket /data
 ```

@@ -1,6 +1,12 @@
 package nl.ru.s3test;
 
 
+import java.io.File;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.Base64;
+import java.util.Date;
+import java.util.List;
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.endpoints.Endpoint;
 import software.amazon.awssdk.regions.Region;
@@ -16,6 +22,19 @@ import java.util.concurrent.CompletableFuture;
 import java.util.function.Consumer;
 
 public class Main {
+
+  static List<String> partHashes = List.of(
+      "sMr7YveEjyARSsdNUjA5ClGv8/B7EyNLf7fvgOha2AA=",
+      "kvSJiBkFRHxltpMXtNJrHSwwZGdShD5oQaO2laYv8nY=",
+      "y44bgegqZU2JpeFSuQHbLiHZZgKK6kakqiFY3Y09Mtk=",
+      "ph/2HqhwijI12Gh/6b7ReIvf67cUeZyLwiDCsxzBXzI=",
+      "BxzmIZGn83fWg/ClGH2iJDPlzfxz4UichPmkK2KpfVA=",
+      "G+uCR/4NBYzxGKVmdtMMNkRsd183L+kWoBz9tQC5ZeI=",
+      "marl9uL3CA6LhHm0gx21NuwJEjUcVhzL2PUsTtMs9lk=",
+      "xdP1/dv00AdFztBQCo5O005nakcxIfniaKLEixQILdg=",
+      "upuMrJszzrTqtw3z0mgmJXok1HbckM2gNRCtqPJ6e/g=",
+      "LXAvGdYE+16mz9/318MSsrjQRvIdGbJXniB+J7kxufA="
+  );
 
   public static void main(String[] args) {
 
@@ -65,6 +84,8 @@ public class Main {
     if (failed) {
       System.exit(-2);
     }
+
+    uploadParts(s3, bucket, args[2]);
   }
 
   private static void uploadTestFile(S3Client s3, String bucket, String partHash, String objectHash, String data) {
@@ -111,5 +132,71 @@ public class Main {
     System.out.println("Response was ok/not ok: " + uploadResponse.sdkHttpResponse().statusCode()
         + uploadResponse.sdkHttpResponse().statusText());
     System.out.println("Response checksum: " + uploadResponse.checksumSHA256());
+  }
+
+  private static void uploadParts(S3Client s3, String bucket, String dir) {
+    String key = "100m" + new Date().toString().replace(' ', '-') + " " + new Random().nextInt();
+    System.out.println("  ===  ");
+
+    String compositeChecksum = compositeChecksum();
+
+    long start = System.currentTimeMillis();
+    CreateMultipartUploadResponse result = s3.createMultipartUpload(b -> b
+        .bucket(bucket)
+        .key(key)
+        .checksumAlgorithm(ChecksumAlgorithm.SHA256)
+    );
+    System.out.println("Upload id:" + result.uploadId());
+
+    for (int i = 0; i < partHashes.size(); i++ ) {
+      long partStart = System.currentTimeMillis();
+      uploadPart(s3, bucket, key, result.uploadId(), i, dir);
+      System.out.println("Part " + i + " uploaded in " + (System.currentTimeMillis() - partStart) + "ms");
+    }
+
+    ListPartsResponse parts = s3.listParts(b -> b
+        .bucket(bucket)
+        .uploadId(result.uploadId())
+        .key(key)
+    );
+    parts.parts().forEach(System.out::println);
+
+    CompleteMultipartUploadResponse uploadResponse = s3.completeMultipartUpload(b -> b
+        .bucket(bucket)
+        .uploadId(result.uploadId()).key(key)
+        .multipartUpload(c -> c
+            .parts(parts.parts().stream().map(p -> CompletedPart.builder()
+                    .partNumber(p.partNumber())
+                    .eTag(p.eTag())
+                    .checksumSHA256(p.checksumSHA256())
+                    .build())
+                .toList()
+            )
+        )
+        .checksumSHA256(compositeChecksum)
+    );
+    System.out.println(System.currentTimeMillis() - start);
+    System.out.println("Response was ok/not ok: " + uploadResponse.sdkHttpResponse().statusCode() + " for " + key + " " + compositeChecksum);
+  }
+
+  private static String compositeChecksum() {
+    try {
+      MessageDigest sha256ChecksumOfChecksums = MessageDigest.getInstance("SHA-256");
+      partHashes.forEach(part -> sha256ChecksumOfChecksums.update(Base64.getDecoder().decode(part)));
+      return Base64.getEncoder().encodeToString(sha256ChecksumOfChecksums.digest()) + "-" + partHashes.size();
+    } catch (NoSuchAlgorithmException e) {
+      throw new RuntimeException(e);
+    }
+  }
+
+  private static void uploadPart(S3Client s3, String bucket, String key, String uploadId, int i, String dir) {
+    s3.uploadPart(b -> b
+            .partNumber(i + 1)
+            .bucket(bucket)
+            .uploadId(uploadId)
+            .key(key)
+            .checksumAlgorithm(ChecksumAlgorithm.SHA256)
+            .checksumSHA256(partHashes.get(i))
+        , RequestBody.fromFile(new File(dir, "part" + i)));
   }
 }
