@@ -1,0 +1,8 @@
+build:
+  image: docker:dind
+  script:
+    - docker login -u $CI_DEPLOY_USER -p $CI_DEPLOY_PASSWORD docker.isc.ru.nl
+    - docker build --no-cache -t $CI_REGISTRY_IMAGE/s3-hash-test .
+    - docker push $CI_REGISTRY_IMAGE/s3-hash-test
+  after_script:
+    - docker image rm -f $CI_REGISTRY_IMAGE/s3-hash-test
