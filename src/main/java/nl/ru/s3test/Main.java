@@ -7,8 +7,10 @@ import java.security.NoSuchAlgorithmException;
 import java.util.Base64;
 import java.util.Date;
 import java.util.List;
+import software.amazon.awssdk.core.internal.http.loader.DefaultSdkHttpClientBuilder;
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.endpoints.Endpoint;
+import software.amazon.awssdk.http.SdkHttpConfigurationOption;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.S3Configuration;
@@ -20,6 +22,7 @@ import java.net.URI;
 import java.util.Random;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Consumer;
+import software.amazon.awssdk.utils.AttributeMap;
 
 public class Main {
 
@@ -41,11 +44,17 @@ public class Main {
     String endpoint = args[0];
     String bucket = args[1];
     System.out.println("Connecting to " + endpoint + " using " + bucket);
+
+    final AttributeMap attributeMap = AttributeMap.builder()
+        .put(SdkHttpConfigurationOption.TRUST_ALL_CERTIFICATES, true)
+        .build();
+
     S3Client s3 = S3Client.builder()
         .region(Region.AF_SOUTH_1)
         .serviceConfiguration(S3Configuration.builder()
             .pathStyleAccessEnabled(true)
             .build())
+        .httpClient(new DefaultSdkHttpClientBuilder().buildWithDefaults(attributeMap))
         .endpointOverride(URI.create(args[0]))
         .build();
     System.out.println("Buckets");
