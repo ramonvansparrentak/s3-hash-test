@@ -85,7 +85,8 @@ public class Main {
       System.exit(-2);
     }
 
-    uploadParts(s3, bucket, args[2]);
+    uploadParts(s3, bucket, args[2], false);
+    uploadParts(s3, bucket, args[2], true);
   }
 
   private static void uploadTestFile(S3Client s3, String bucket, String partHash, String objectHash, String data) {
@@ -134,23 +135,26 @@ public class Main {
     System.out.println("Response checksum: " + uploadResponse.checksumSHA256());
   }
 
-  private static void uploadParts(S3Client s3, String bucket, String dir) {
-    String key = "100m" + new Date().toString().replace(' ', '-') + " " + new Random().nextInt();
+  private static void uploadParts(S3Client s3, String bucket, String dir, boolean skipHashchecksum) {
+    String key = "100m" + new Date().toString().replace(' ', '-') + " " + new Random().nextInt(100);
     System.out.println("  ===  ");
 
     String compositeChecksum = compositeChecksum();
 
     long start = System.currentTimeMillis();
-    CreateMultipartUploadResponse result = s3.createMultipartUpload(b -> b
-        .bucket(bucket)
-        .key(key)
-        .checksumAlgorithm(ChecksumAlgorithm.SHA256)
+    CreateMultipartUploadResponse result = s3.createMultipartUpload(b ->
+        {
+          b = b.bucket(bucket).key(key);
+          if (!skipHashchecksum) {
+            b.checksumAlgorithm(ChecksumAlgorithm.SHA256);
+          }
+        }
     );
     System.out.println("Upload id:" + result.uploadId());
 
     for (int i = 0; i < partHashes.size(); i++ ) {
       long partStart = System.currentTimeMillis();
-      uploadPart(s3, bucket, key, result.uploadId(), i, dir);
+      uploadPart(s3, bucket, key, result.uploadId(), i, dir, skipHashchecksum);
       System.out.println("Part " + i + " uploaded in " + (System.currentTimeMillis() - partStart) + "ms");
     }
 
@@ -161,22 +165,30 @@ public class Main {
     );
     parts.parts().forEach(System.out::println);
 
-    CompleteMultipartUploadResponse uploadResponse = s3.completeMultipartUpload(b -> b
-        .bucket(bucket)
-        .uploadId(result.uploadId()).key(key)
-        .multipartUpload(c -> c
-            .parts(parts.parts().stream().map(p -> CompletedPart.builder()
-                    .partNumber(p.partNumber())
-                    .eTag(p.eTag())
-                    .checksumSHA256(p.checksumSHA256())
-                    .build())
-                .toList()
-            )
-        )
-        .checksumSHA256(compositeChecksum)
+    CompleteMultipartUploadResponse uploadResponse = s3.completeMultipartUpload(b -> {
+          b = b.bucket(bucket)
+              .uploadId(result.uploadId()).key(key)
+              .multipartUpload(c -> c
+                  .parts(parts.parts().stream().map(p -> CompletedPart.builder()
+                          .partNumber(p.partNumber())
+                          .eTag(p.eTag())
+                          .checksumSHA256(p.checksumSHA256())
+                          .build())
+                      .toList()
+                  )
+              );
+          if (!skipHashchecksum) {
+              b.checksumSHA256(compositeChecksum);
+          }
+        }
     );
     System.out.println(System.currentTimeMillis() - start);
-    System.out.println("Response was ok/not ok: " + uploadResponse.sdkHttpResponse().statusCode() + " for " + key + " " + compositeChecksum);
+    if (skipHashchecksum) {
+      System.out.println("Response was ok/not ok: " + uploadResponse.sdkHttpResponse().statusCode() + " for " + key + " without checksum");
+    } else {
+      System.out.println("Response was ok/not ok: " + uploadResponse.sdkHttpResponse().statusCode() + " for " + key + " "
+          + compositeChecksum);
+    }
   }
 
   private static String compositeChecksum() {
@@ -189,14 +201,18 @@ public class Main {
     }
   }
 
-  private static void uploadPart(S3Client s3, String bucket, String key, String uploadId, int i, String dir) {
-    s3.uploadPart(b -> b
-            .partNumber(i + 1)
-            .bucket(bucket)
-            .uploadId(uploadId)
-            .key(key)
-            .checksumAlgorithm(ChecksumAlgorithm.SHA256)
-            .checksumSHA256(partHashes.get(i))
+  private static void uploadPart(S3Client s3, String bucket, String key, String uploadId, int i, String dir,
+      boolean skipHashchecksum) {
+    s3.uploadPart(b -> {
+          b = b.partNumber(i + 1)
+              .bucket(bucket)
+              .uploadId(uploadId)
+              .key(key);
+          if (!skipHashchecksum) {
+              b.checksumAlgorithm(ChecksumAlgorithm.SHA256)
+                .checksumSHA256(partHashes.get(i));
+          }
+        }
         , RequestBody.fromFile(new File(dir, "part" + i)));
   }
 }
